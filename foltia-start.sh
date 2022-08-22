@@ -8,7 +8,7 @@ sigterm_handler(){
   /etc/init.d/smb stop
   /ect/init.d/nmb stop
   /etc/init.d/minidlna stop
-  /etc/init.d/shellinabox stop
+  /etc/init.d/shellinaboxd stop
   /etc/init.d/rsyslog stop
 }
 
@@ -40,6 +40,7 @@ fi
 if [ ! -d /var/spool/at/spool ]; then
   echo "Create  /var/spool/at/ persistent volume."
   cp -a /var/spool/at.orig/* /var/spool/at/
+  cp -a /var/spool/at.orig/.SEQ /var/spool/at/
   chown daemon:daemon /var/spool/at
   chmod 700 /var/spool/at
 fi
@@ -62,7 +63,7 @@ if [ -n "${MIRAKURUN}" ]; then
 fi
 
 # option services
-if [ "${ENABLE_PHPPGADMIN}" = "true" ]; then
+if [ "${ENABLE_PHPPGADMIN}" -eq 1 ]; then
   echo "phpPgAdmin enabled."
 else
   rm -rf /home/foltia/php/phppgadmin
