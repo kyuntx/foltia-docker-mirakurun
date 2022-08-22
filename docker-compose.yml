@@ -19,7 +19,9 @@ services:
       #- 1900:1900/udp # minidlna
     hostname: foltia
     volumes:
-      - ./data:/var/opt/rh/rh-postgresql95/lib/pgsql/data
+      - ./data/db:/var/opt/rh/rh-postgresql95/lib/pgsql/data
+      - ./data/at:/var/spool/at
+      - ./data/cron:/var/spool/cron
       - ./tv:/home/foltia/php/tv
       - ./neroAacEnc/linux/neroAacEnc:/home/foltia/perl/tool/neroAacEnc
     restart: always

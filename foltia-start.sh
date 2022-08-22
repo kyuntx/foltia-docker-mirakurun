@@ -30,6 +30,20 @@ if [ ! -d /home/foltia/php/tv/live ]; then
   chmod -R 755 /home/foltia/php/tv
 fi
 
+if [ ! -e /var/spool/cron/foltia ]; then
+  echo "Create  /var/spool/cron/ persistent volume."
+  cp -a /var/spool/cron.orig/* /var/spool/cron/
+  chown foltia:foltia /var/spool/cron/foltia
+  chmod 770 /var/spool/cron
+fi
+
+if [ ! -d /var/spool/at/spool ]; then
+  echo "Create  /var/spool/at/ persistent volume."
+  cp -a /var/spool/at.orig/* /var/spool/at/
+  chown daemon:daemon /var/spool/at
+  chmod 700 /var/spool/at
+fi
+
 # start services
 /etc/init.d/rsyslog start
 /etc/init.d/rh-postgresql95-postgresql start
