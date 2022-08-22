@@ -1,0 +1,1158 @@
+diff -ur foltia.orig/perl/channelscan.pl foltia/perl/channelscan.pl
+--- foltia.orig/perl/channelscan.pl	2022-04-07 22:23:32.000000000 +0900
++++ foltia/perl/channelscan.pl	2022-08-22 09:07:55.884528986 +0900
+@@ -41,7 +41,7 @@
+ chk_process_exist();#二重起動チェック
+ 
+ #定義
+-my $recpt1path = $toolpath."/perl/tool/recpt1"; #ほかのキャプチャデバイス作ってる人はココを変更
++my $recpt1path = $toolpath."/perl/tool/rivarun"; #ほかのキャプチャデバイス作ってる人はココを変更
+ my $epgdumppath = $toolpath."/perl/tool"; #epgdumpのあるディレクトリ
+ my $recfolderpath = $recfolderpath;#tsを出力するディレクトリ
+ my $xmloutpath = $recfolderpath;
+@@ -92,10 +92,10 @@
+ 	&writelog("channelscan.pl DEBUG cmd:$recpt1path $channel 6 $recfolderpath/__$channel.m2t");
+ 
+ 	#$oserr = `$recpt1path --device $usetuner $channel 6 $recfolderpath/__$channel.m2t 2>&1`;
+-	$oserr = `$recpt1path $channel 6 $recfolderpath/__$channel.m2t 2>&1`;
++	$oserr = `$recpt1path --mirakurun $mirakurun --ch GR/$channel 6 $recfolderpath/__$channel.m2t 2>&1`;
+ 	if ($oserr =~ /.*(Cannot open tuner device).*/s){ #BUSYなら
+ 		&writelog("$processfilename ERR DEVICE $usetuner is BUSY,retry with another tuner.");
+-		$oserr = `$recpt1path $channel 6 $recfolderpath/__$channel.m2t`;
++		$oserr = `$recpt1path --mirakurun $mirakurun --ch GR/$channel 6 $recfolderpath/__$channel.m2t`;
+ 	}else{
+ 		&writelog("$processfilename DEBUG DEVICE $usetuner is available");
+ 	}
+@@ -158,19 +158,19 @@
+ #CATVスキャンループ
+ for ($channel = 63; $channel >= 13 ; $channel--){
+ 	$dbwritech = $channel + 1000; #CATVバンドはDB上では1013のように表現される
+-	$recpt1channel = "C".$channel;
++	$recpt1channel = "GR/C".$channel;
+ 	unlink("$recfolderpath/__$channel.m2t");
+ 	unlink("$xmloutpath/__$channel-epg.xml");
+ 	print "\nChannel: $recpt1channel\n";
+ 	&writelog("channelscan.pl DEBUG cmd:$recpt1path $recpt1channel 6 $recfolderpath/__$channel.m2t");
+ 
+ 	#$oserr = `$recpt1path --device $usetuner $recpt1channel 4 $recfolderpath/__$channel.m2t 2>&1`;
+-	$oserr = `$recpt1path  $recpt1channel 6 $recfolderpath/__$channel.m2t 2>&1`;
++	$oserr = `$recpt1path --mirakurun $mirakurun --ch $recpt1channel 6 $recfolderpath/__$channel.m2t 2>&1`;
+ 
+ 	#$oserr = `$recpt1path $recpt1channel 4 $recfolderpath/__$channel.m2t`;
+ 	if ($oserr =~ /.*(Cannot open tuner device).*/s){ #BUSYなら
+ 		&writelog("$processfilename ERR DEVICE $usetuner is BUSY,retry with another tuner.");
+-		$oserr = `$recpt1path $recpt1channel 4 $recfolderpath/__$channel.m2t`;
++		$oserr = `$recpt1path --mirakurun $mirakurun --ch $recpt1channel 4 $recfolderpath/__$channel.m2t`;
+ 	}else{
+ 		&writelog("$processfilename DEBUG DEVICE $usetuner is available");
+ 	}
+@@ -226,10 +226,11 @@
+ &writechscanlog("BSデジタル放送スキャン中");
+ 
+ $channel = 211;
++$channel2 = BS09_0;
+ print "\nBS Digital Scan\n";
+ unlink("$recfolderpath/__$channel.m2t");
+ unlink("$xmloutpath/__$channel-epg.xml");
+-$oserr = `$recpt1path $channel 6 $recfolderpath/__$channel.m2t`;
++$oserr = `$recpt1path  --mirakurun $mirakurun --sid $channel --ch BS/$channel2 6 $recfolderpath/__$channel.m2t`;
+ if (-s "$recfolderpath/__$channel.m2t"){
+ 	$oserr = `$epgdumppath/epgdump /BS $recfolderpath/__$channel.m2t $xmloutpath/__$channel-epg.xml`;
+ 
+@@ -293,7 +294,7 @@
+ print "\nCS Digital Scan\n";
+ unlink("$recfolderpath/__$channel.m2t");
+ unlink("$xmloutpath/__$channel-epg.xml");
+-$oserr = `$recpt1path $channel 6 $recfolderpath/__$channel.m2t`;
++$oserr = `$recpt1path  --mirakurun $mirakurun --ch CS/$channel 6 $recfolderpath/__$channel.m2t`;
+ if (-s "$recfolderpath/__$channel.m2t"){
+ 	$oserr = `$epgdumppath/epgdump /CS $recfolderpath/__$channel.m2t $xmloutpath/__$channel-epg.xml`;
+ 
+diff -ur foltia.orig/perl/count_tuners.pl foltia/perl/count_tuners.pl
+--- foltia.orig/perl/count_tuners.pl	2022-04-07 22:23:32.000000000 +0900
++++ foltia/perl/count_tuners.pl	2022-08-22 16:39:21.265644010 +0900
+@@ -75,145 +75,22 @@
+ 
+ 
+ sub get_tuners_list(){# チューナーリストを取得する
+-#チューナーデータ:pt1_dev.h
+ 
+-my @bsdrv = (
+-    "/dev/pt1video1",
+-    "/dev/pt1video0",
+-    "/dev/pt1video5",
+-    "/dev/pt1video4",
+-    "/dev/pt1video9",
+-    "/dev/pt1video8",
+-    "/dev/pt1video13",
+-    "/dev/pt1video12",
+-    "/dev/pt3video1",
+-    "/dev/pt3video0",
+-    "/dev/pt3video5",
+-    "/dev/pt3video4",
+-    "/dev/pt3video9",
+-    "/dev/pt3video8",
+-    "/dev/pt3video13",
+-    "/dev/pt3video12",
+-    "/dev/asv52201",
+-    "/dev/asv52200",
+-    "/dev/asv52205",
+-    "/dev/asv52204",
+-    "/dev/asv52209",
+-    "/dev/asv52208",
+-    "/dev/asv522013",
+-    "/dev/asv522012",
+-    "/dev/pxq3pe0",
+-    "/dev/pxq3pe1",
+-    "/dev/pxq3pe4",
+-    "/dev/pxq3pe5",
+-    "/dev/pxq3pe8",
+-    "/dev/pxq3pe9",
+-    "/dev/pxq3pe12",
+-    "/dev/pxq3pe13",
+-    "/dev/pxw3u30",  
+-    "/dev/pxw3u32",
+-    "/dev/pxs3u20",  
+-    "/dev/pxs3u0",  
+-    "/dev/px4-DTV0",
+-    "/dev/px4-DTV1",
+-    "/dev/px4-DTV4",
+-    "/dev/px4-DTV5",
+-    "/dev/px4-DTV8",
+-    "/dev/px4-DTV9",
+-    "/dev/px4-DTV12",
+-    "/dev/px4-DTV13",
+-    "/dev/px4-DTV16",
+-    "/dev/px4-DTV17",
+-    "/dev/px4-DTV20",
+-    "/dev/px4-DTV21",
+-    "/dev/px4-DTV24",
+-    "/dev/px4-DTV25",
+-    "/dev/px4-DTV28",
+-    "/dev/px4-DTV29"
+-);
+-
+-my @isdb_t_dev  = (
+-    "/dev/pt1video2",
+-    "/dev/pt1video3",
+-    "/dev/pt1video6",
+-    "/dev/pt1video7",
+-    "/dev/pt1video10",
+-    "/dev/pt1video11",
+-    "/dev/pt1video14",
+-    "/dev/pt1video15",
+-    "/dev/pt3video2",
+-    "/dev/pt3video3",
+-    "/dev/pt3video6",
+-    "/dev/pt3video7",
+-    "/dev/pt3video10",
+-    "/dev/pt3video11",
+-    "/dev/pt3video14",
+-    "/dev/pt3video15",
+-    "/dev/asv52202",
+-    "/dev/asv52203",
+-    "/dev/asv52206",
+-    "/dev/asv52207",
+-    "/dev/asv522010",
+-    "/dev/asv522011",
+-    "/dev/asv522014",
+-    "/dev/asv522015",
+-    "/dev/pxq3pe2",
+-    "/dev/pxq3pe3",
+-    "/dev/pxq3pe6",
+-    "/dev/pxq3pe7",
+-    "/dev/pxq3pe10",
+-    "/dev/pxq3pe11",
+-    "/dev/pxq3pe14",
+-    "/dev/pxq3pe15",
+-    "/dev/pxw3u31", 
+-    "/dev/pxw3u33",
+-    "/dev/pxs3u21",  
+-    "/dev/pxs3u1",  
+-    "/dev/px4-DTV2",
+-    "/dev/px4-DTV3",
+-    "/dev/px4-DTV6",
+-    "/dev/px4-DTV7",
+-    "/dev/px4-DTV10",
+-    "/dev/px4-DTV11",
+-    "/dev/px4-DTV14",
+-    "/dev/px4-DTV15",
+-    "/dev/px4-DTV18",
+-    "/dev/px4-DTV19",
+-    "/dev/px4-DTV22",
+-    "/dev/px4-DTV23",
+-    "/dev/px4-DTV26",
+-    "/dev/px4-DTV27",
+-    "/dev/px4-DTV30",
+-    "/dev/px4-DTV31"
+-);
+-
+-my @devs = glob("/dev/*");
+ my @usebsdevices;
+ my @useterrestrialdevices;
+ my $bstuners = 0;
+ my $terrestrialtuners = 0;
++my $terrestriallist = "";
++my $bslist = "";
++
++	$terrestriallist = `curl -s -X GET http://$mirakurun/api/config/tuners | jq  -r '.[] | select(.types[0]=="GR") | .command' | awk '{print \"($mirakurun):\" \$4}'`;
++	$bslist = `curl -s -X GET http://$mirakurun/api/config/tuners | jq  -r '.[] | select(.types[0]=="BS") | .command' | awk '{print \"($mirakurun):\" \$4}'`;
+ 
++        @useterrestrialdevices = split(/\n/,$terrestriallist);
++        @usebsdevices = split(/\n/,$bslist);
+ 
+-	foreach my $device (@devs) {
+-		if (in_array($device, @bsdrv)) {
+-			#print "EXIST:$device\n";
+-			&writelog("$processfilename DEBUG BS FOUND:$device");
+-			push(@usebsdevices,$device);
+-			$bstuners++ ;
+-		} else {
+-			#print "none:$device\n";
+-		}
+-	}# foreach
+-	foreach my $device (@devs) {
+-		if (in_array($device, @isdb_t_dev)) {
+-			#print "EXIST:$device\n";
+-			&writelog("$processfilename DEBUG Terrestrial FOUND:$device");
+-			push(@useterrestrialdevices,$device);
+-			$terrestrialtuners++ ;
+-		} else {
+-			#print "none:$device\n";
+-		}
+-	}# foreach
++        $terrestrialtuners = @useterrestrialdevices;
++        $bstuners = @usebsdevices;
+ 
+ return(\@usebsdevices,\@useterrestrialdevices,$bstuners,$terrestrialtuners );
+ }#end sub get_tuners_list
+diff -ur foltia.orig/perl/digitaltvrecording.pl foltia/perl/digitaltvrecording.pl
+--- foltia.orig/perl/digitaltvrecording.pl	2022-04-07 22:23:32.000000000 +0900
++++ foltia/perl/digitaltvrecording.pl	2022-08-22 09:07:55.888528909 +0900
+@@ -157,7 +157,7 @@
+ #
+ my $oserr = 0;
+ my $originalrecch = $recch;
+-my $pt1recch =  $recch;
++my $rivarecch =  $recch;
+ my $errorflag = 0;
+ my $catvch = 0;
+ 
+@@ -170,34 +170,34 @@
+ #    #recfriiobs用チャンネルリマップ
+ #    if ($recch == 101) {
+ #      $bssplitflag = $recch;
+-#      $recch = "b10";#22 : NHK BS1/BS2 
++#      $recch = "b10";#22 : NHK BS1/BS2
+ #    }elsif($recch == 102){
+ #      $bssplitflag = $recch;
+-#      $recch = "b10";#22 : NHK BS1/BS2 
++#      $recch = "b10";#22 : NHK BS1/BS2
+ #    }elsif($recch == 103){
+-#      $recch = "b11";#23 : NHK hi  
++#      $recch = "b11";#23 : NHK hi
+ #    }elsif($recch == 141){
+-#      $recch = "b8";# 20 : BS-NTV  
++#      $recch = "b8";# 20 : BS-NTV
+ #    }elsif($recch == 151){
+-#      $recch = "b1";#13 : BS-Asahi 
++#      $recch = "b1";#13 : BS-Asahi
+ #    }elsif($recch == 161){
+-#      $recch = "b2";#14 : BS-i  
++#      $recch = "b2";#14 : BS-i
+ #    }elsif($recch == 171){
+-#      $recch = "b4";#16 : BS-Japan 
++#      $recch = "b4";#16 : BS-Japan
+ #    }elsif($recch == 181){
+-#      $recch = "b9";#21 : BS-Fuji 
++#      $recch = "b9";#21 : BS-Fuji
+ #    }elsif($recch == 191){
+-#      $recch = "b3";#15 : WOWOW 
++#      $recch = "b3";#15 : WOWOW
+ #    }elsif($recch == 192){
+-#      $recch = "b3";#15 : WOWOW 
++#      $recch = "b3";#15 : WOWOW
+ #    }elsif($recch == 193){
+-#      $recch = "b3";#15 : WOWOW 
++#      $recch = "b3";#15 : WOWOW
+ #    }elsif($recch == 200){
+ #      $recch = "b6";# b6 # Star Channel
+ #    }elsif($recch == 211){
+-#      $recch = "b5";#17 : BS11  
++#      $recch = "b5";#17 : BS11
+ #    }else{
+-#      $recch = "b7";#19 : TwellV 
++#      $recch = "b7";#19 : TwellV
+ #    }
+ ##PT1はそのまま通る
+ #
+@@ -346,35 +346,35 @@
+ #  exit 3;
+ #}
+ 
+-($pt1recch,$recch) = &digitalch2csband($bandtype,$recch);
+-&writelog("digitaltvrecording DEBUG ($pt1recch,$recch) = digitalch2csband($bandtype,$recch) ");
++($rivarecch,$recch) = &digitalch2csband($bandtype,$recch);
++&writelog("digitaltvrecording DEBUG ($rivarecch,$recch) = digitalch2csband($bandtype,$recch) ");
+ #チューナーボード監視プロセス起動
+ $oserr = system("$toolpath/perl/chk_tunerboard_status.pl $outputfile &");
+ 
+ # PT1
+ # b25,recpt1があるか確認
+-  if  (-e "$toolpath/perl/tool/recpt1"){
++  if  (-e "$toolpath/perl/tool/rivarun"){
+     if ($bandtype >= 1){ #BS/CSなら
+       if (($originalrecch >= 191) && ($originalrecch <= 193)){#WOWOWならSID指定やめ
+-        &writelog("digitaltvrecording DEBUG recpt1 --b25 $pt1recch $reclengthsec $outputfile");
+-        $oserr = system("$toolpath/perl/tool/recpt1 --b25 $pt1recch $reclengthsec $outputfile");
++        &writelog("digitaltvrecording rivarun --mirakurun $mirakurun --b25 --ch $rivarecch $reclengthsec $outputfile");
++        $oserr = system("$toolpath/perl/tool/rivarun --mirakurun $mirakurun --b25 --ch $rivarecch $reclengthsec $outputfile");
+       }else{
+-        &writelog("digitaltvrecording DEBUG recpt1 --b25 --sid $originalrecch  $pt1recch $reclengthsec $outputfile");
+-        $oserr = system("$toolpath/perl/tool/recpt1 --b25 --sid $originalrecch $pt1recch $reclengthsec $outputfile");
++        &writelog("digitaltvrecording rivarun --b25 --mirakurun $mirakurun --sid $originalrecch --ch $rivarecch $reclengthsec $outputfile");
++        $oserr = system("$toolpath/perl/tool/rivarun --b25 --mirakurun $mirakurun --sid $originalrecch --ch $rivarecch $reclengthsec $outputfile");
+       }#WOWOW
+     }else{ #地デジ
+       $catvch = &catvchcheck($originalrecch);
+       my $sidoption = &get_terrestrial_sid_option($stationid);#MX2録画用などの
+-      &writelog("digitaltvrecording DEBUG recpt1 --b25 $sidoption $catvch $reclengthsec $outputfile");
+-      $oserr = system("$toolpath/perl/tool/recpt1 --b25 $sidoption $catvch $reclengthsec $outputfile  ");
++      &writelog("digitaltvrecording rivarun --b25 --mirakurun $mirakurun $sidoption --ch $catvch $reclengthsec $outputfile");
++      $oserr = system("$toolpath/perl/tool/rivarun --b25 --mirakurun $mirakurun $sidoption --ch $catvch $reclengthsec $outputfile  ");
+     }
+     $oserr = $oserr >> 8;
+     if ($oserr > 0){
+-      &writelog("digitaltvrecording ERROR PTx Tuner is BUSY or cannot tune to the  channel $catvch:$pt1recch. $oserr");
++      &writelog("digitaltvrecording ERROR PTx Tuner is BUSY or cannot tune to the  channel $catvch:$rivarecch. sidoption $sidoption. $oserr");
+       $errorflag = 2;
+     }
+   }else{ # エラー recpt1がありません
+-    &writelog("digitaltvrecording ERROR recpt1 not found. You must install $toolpath/tool/b25 and $toolpath/tool/recpt1.");
++    &writelog("digitaltvrecording ERROR rivarun not found. You must install $toolpath/tool/b25 and $toolpath/tool/rivarun.");
+   $errorflag = 1;
+   }
+ # friio#今使ってますか?#2016/9/24 
+@@ -448,7 +448,7 @@
+         $returnoption = "";
+         &writelog("digitaltvrecording DEBUG stationid is null:$returnoption");
+       }else{
+-        $returnoption = " --sid hd ";
++        $returnoption = "";
+         &writelog("digitaltvrecording DEBUG stationid is null:$returnoption");
+       }
+     return $returnoption;
+@@ -474,7 +474,7 @@
+           $returnoption = "";
+           &writelog("digitaltvrecording DEBUG No SID Option:$returnoption");
+         }else{
+-          $returnoption = " --sid hd ";
++          $returnoption = "";
+           &writelog("digitaltvrecording DEBUG No SID Option and split HD:$returnoption");
+         }
+       }
+diff -ur foltia.orig/perl/epgimport.pl foltia/perl/epgimport.pl
+--- foltia.orig/perl/epgimport.pl	2022-04-07 22:23:32.000000000 +0900
++++ foltia/perl/epgimport.pl	2022-08-22 09:07:55.888528909 +0900
+@@ -48,7 +48,7 @@
+ my $ontvcode = "";
+ my $channel = "";
+ my @date = ();
+-my $recpt1path = $toolpath . "/perl/tool/recpt1"; #ほかのキャプチャデバイス作ってる人はココを変更
++my $recpt1path = $toolpath . "/perl/tool/rivarun"; #ほかのキャプチャデバイス作ってる人はココを変更
+ my $epgdumppath = $toolpath ."/perl/tool"; #epgdumpのあるディレクトリ
+ my $xmloutpath = $recfolderpath;
+ my %stations;
+@@ -152,7 +152,7 @@
+ 	}
+ $catvch = &catvchcheck($channel);
+ 	&writelog("epgimport $recpt1path $catvch $rectime $recfolderpath/__$channel.m2t:$catvch:$channel");
+-$oserr = `$recpt1path $catvch $rectime $recfolderpath/__$channel.m2t`;
++$oserr = `$recpt1path --mirakurun $mirakurun --ch $catvch $rectime $recfolderpath/__$channel.m2t`;
+ if (-e "$recfolderpath/__$channel.m2t"){
+ 	$oserr = `nice -n 12 $epgdumppath/epgdump $ontvcode $recfolderpath/__$channel.m2t $xmloutpath/__$channel-epg.xml`;
+ $oserr = system("nice -n 12 perl $toolpath/perl/xmltv2foltia.pl < $xmloutpath/__$channel-epg.xml");
+@@ -193,7 +193,7 @@
+ 	&chkrecordingschedule;
+ 
+ 	#$oserr = `$recpt1path $bschannel $bsrectime $recfolderpath/__$bschannel.m2t`;
+-	$oserr = `$recpt1path --b25 --EMM $bschannel $bsrectime $recfolderpath/__$bschannel.m2t`;
++	$oserr = `$recpt1path --b25 --mirakurun $mirakurun --sid $bschannel --ch BS/BS09_0 $bsrectime $recfolderpath/__$bschannel.m2t`;
+ if (-e "$recfolderpath/__$bschannel.m2t"){
+ 
+ 	$oserr = `nice -n 12 $epgdumppath/epgdump /BS $recfolderpath/__$bschannel.m2t $xmloutpath/__$bschannel-epg.xml`;
+@@ -242,13 +242,13 @@
+ 	&chkrecordingschedule;
+ 
+ #	$oserr = `$recpt1path $channela $cs1rectime $recfolderpath/__$channela.m2t`;
+-	$oserr = `$recpt1path --b25 --EMM $channela $cs1rectime $recfolderpath/__$channela.m2t`;
++	$oserr = `$recpt1path --b25 --mirakurun $mirakurun --ch CS/$channela $cs1rectime $recfolderpath/__$channela.m2t`;
+ 
+ 	$channelb = "CS4";
+ 	&chkrecordingschedule;
+ 
+ #	$oserr = `$recpt1path $channelb $cs2rectime $recfolderpath/__$channelb.m2t`;
+-	$oserr = `$recpt1path --b25 --EMM $channelb $cs2rectime $recfolderpath/__$channelb.m2t`;
++	$oserr = `$recpt1path --b25 --mirakurun $mirakurun --ch CS/$channelb $cs2rectime $recfolderpath/__$channelb.m2t`;
+ 
+ #時間のかかるepgdumpまとめてあとまわし
+ if (-e "$recfolderpath/__$channela.m2t"){
+diff -ur foltia.orig/perl/foltialib.pl foltia/perl/foltialib.pl
+--- foltia.orig/perl/foltialib.pl	2022-04-07 22:23:32.000000000 +0900
++++ foltia/perl/foltialib.pl	2022-08-22 09:07:55.892528836 +0900
+@@ -676,6 +676,7 @@
+ 	$trconqty = $conf{'trconqty'};
+ 	$phptoolpath = $conf{'phptoolpath'};
+ 	$debugmode = $conf{'debugmode'};
++	$mirakurun = $conf{'mirakurun'};
+ 
+ 	#foltia_const 読み込み
+ 	$sth = $dbh->prepare('SELECT key,value FROM foltia_const');
+@@ -945,38 +946,72 @@
+ 		#recfriiobs用チャンネルリマップ
+ 		if ($recch == 101) {
+ 			$bssplitflag = $recch;
+-			$recch = "b10";#22 : NHK BS1/BS2
+-		}elsif($recch == 102){
+-			$bssplitflag = $recch;
+-			$recch = "b10";#22 : NHK BS1/BS2
+-		}elsif($recch == 103){
+-			$recch = "b11";#23 : NHK hi
+-		}elsif($recch == 141){
+-			$recch = "b8";# 20 : BS-NTV
+-		}elsif($recch == 151){
+-			$recch = "b1";#13 : BS-Asahi
+-		}elsif($recch == 161){
+-			$recch = "b2";#14 : BS-i
+-		}elsif($recch == 171){
+-			$recch = "b4";#16 : BS-Japan
+-		}elsif($recch == 181){
+-			$recch = "b9";#21 : BS-Fuji
+-		}elsif($recch == 191){
+-			$recch = "b3";#15 : WOWOW
+-		}elsif($recch == 192){
+-			$recch = "b3";#15 : WOWOW
+-		}elsif($recch == 193){
+-			$recch = "b3";#15 : WOWOW
+-		}elsif($recch == 200){
+-			$recch = "b6";# b6 # Star Channel
+-		}elsif($recch == 211){
+-			$recch = "b5";#17 : BS11
+-		}else{
+-			$recch = "b7";#19 : TwellV
++			$pt1recch = "BS/BS15_0";#22 : NHK BS1/BS2
++                }elsif($recch == 102){
++                        $bssplitflag = $recch;
++                        $recch = "BS/BS15_0"; #22 : NHK BS1/BS2
++                }elsif($recch == 103){
++                        $pt1recch = "BS/BS03_1"; # NHK BSプレミアム
++                }elsif($recch == 141){
++                        $pt1recch = "BS/BS13_0"; # BS日テレ
++                }elsif($recch == 151){
++                        $pt1recch = "BS/BS01_0"; # BS朝日
++                }elsif($recch == 161){
++                        $pt1recch = "BS/BS01_1"; # BS-TBS
++                }elsif($recch == 171){
++                        $pt1recch = "BS/BS01_2"; # BSテレ東
++                }elsif($recch == 181){
++                        $pt1recch = "BS/BS13_1"; # BSフジ
++                }elsif($recch == 191){
++                        $pt1recch = "BS/BS03_0"; # WOWOWプライム
++                }elsif($recch == 192){
++                        $pt1recch = "BS/BS05_0"; # WOWOWライブ
++                }elsif($recch == 193){
++                        $pt1recch = "BS/BS05_1"; # WOWOWシネマ
++                }elsif($recch == 200){
++                        $pt1recch = "BS/BS09_1"; # スター・チャンネル1
++                }elsif($recch == 201){
++                        $pt1recch = "BS/BS15_1"; # スター・チャンネル2
++                }elsif($recch == 202){
++                        $pt1recch = "BS/BS15_1"; # スター・チャンネル3
++                }elsif($recch == 211){
++                        $pt1recch = "BS/BS09_0"; # BS11
++                }elsif($recch == 222){
++                        $pt1recch = "BS/BS09_2"; # TwellV
++                }elsif($recch == 231){
++                        $pt1recch = "BS/BS11_1"; # 放送大学 BS1
++                }elsif($recch == 232){
++                        $pt1recch = "BS/BS11_1"; # 放送大学 BS2
++                }elsif($recch == 234){
++                        $pt1recch = "BS/BS21_2"; # グリーンチャンネル
++                }elsif($recch == 236){
++                        $pt1recch = "BS/BS13_2"; # BSアニマックス
++                }elsif($recch == 241){
++                        $pt1recch = "BS/BS11_0"; # BSスカパー!
++                }elsif($recch == 242){
++                        $pt1recch = "BS/BS19_1"; # J SPORTS 1
++                }elsif($recch == 243){
++                        $pt1recch = "BS/BS19_2"; # J SPORTS 2
++                }elsif($recch == 244){
++                        $pt1recch = "BS/BS19_3"; # J SPORTS 3
++                }elsif($recch == 245){
++                        $pt1recch = "BS/BS19_0"; # J SPORTS 4
++                }elsif($recch == 251){
++                        $pt1recch = "BS/BS11_2"; # BS釣りビジョン
++                }elsif($recch == 252){
++                        $pt1recch = "BS/BS21_0"; # シネフィルWOWOW
++                }elsif($recch == 255){
++                        $pt1recch = "BS/BS21_1"; # 日本映画専門チャンネル
++                }elsif($recch == 256){
++                        $pt1recch = "BS/BS23_0"; # ディズニー・チャンネル
++                }elsif($recch == 260){
++                        $pt1recch = "BS/BS23_3"; # BS松竹東急
++                }elsif($recch == 263){
++                        $pt1recch = "BS/BS23_2"; # BSJapanext
++                }elsif($recch == 265){
++                        $pt1recch = "BS/BS23_1"; # BSよしもと
+ 		}
+ 
+-		#PT1はそのまま通る
+-
+ 	}elsif($bandtype == 2){
+ 
+ 		$sth = $dbh->prepare("SELECT count(*) FROM foltia_sidndmap WHERE sid = ?");
+@@ -986,169 +1021,113 @@
+ 			$sth = $dbh->prepare("SELECT sid,transponder FROM foltia_sidndmap WHERE sid = ?");
+ 			$sth->execute($recch);
+ 			@sqlresult = $sth->fetchrow_array;
+-			$pt1recch = $sqlresult[1];
++			$pt1recch = "CS/".$sqlresult[1];
+ 		}else{
+ 			&writelog("foltialib.pl digitalch2csband() Cannot get CS transponder value from foltia_sidndmap table:ch(SID) $recch");
+ 
+ 			# recpt1でのみ動作確認
+ 			if($recch == 335){
+-				$pt1recch = "CS8";#335ch：キッズステーション HD
+-			}elsif($recch == 296){
+-				$pt1recch = "CS2";#296ch：TBSチャンネル 2012年7月1日より
+-			}elsif($recch == 298){
+-				$pt1recch = "CS2";#298ch：テレ朝チャンネル 2012年7月1日より
+-			}elsif($recch == 299){
+-				$pt1recch = "CS2";#299ch：朝日ニュースター 2012年7月1日より
+-			}elsif($recch == 237){
+-				$pt1recch = "CS2";#237ch：スター・チャンネル プラス /移動、あきチャンネル
+-			}elsif($recch == 239){
+-				$pt1recch = "CS2";#239ch：日本映画専門チャンネルHD /移動、あきチャンネル
+-			}elsif($recch == 306){
+-				$pt1recch = "CS2";#306ch：フジテレビCSHD→フジテレビＮＥＸＴ /2012年06月05日移動、あきチャンネル
+-			}elsif($recch == 307){
+-				$pt1recch = "CS20";#307ch：フジテレビ739 フジテレビＯＮＥ
+-			}elsif($recch == 308){
+-				$pt1recch = "CS20";#308ch：フジテレビ721 フジテレビＴＷＯ
+-			}elsif($recch == 309){
+-				$pt1recch = "CS20";#309ch：フジテレビNEXT ライブ・プレミアム 2012年06月05日
+-			}elsif($recch == 100){
+-				$pt1recch = "CS4";#100ch：e2プロモ
+-			}elsif($recch == 256){
+-				$pt1recch = "CS4";#256ch：J sports ESPN /移動、あきチャンネル
+-			}elsif($recch == 312){
+-				$pt1recch = "CS4";#312ch：FOX
+-			}elsif($recch == 322){
+-				$pt1recch = "CS4";#322ch：スペースシャワーTV
+-			}elsif($recch == 331){
+-				$pt1recch = "CS4";#331ch：カートゥーンネットワーク
+-			}elsif($recch == 194){
+-				$pt1recch = "CS4";#194ch：インターローカルTV 2010年9月16日廃止
+-			}elsif($recch == 334){
+-				$pt1recch = "CS4";#334ch：ディズニーXD
+-			}elsif($recch == 221){
+-				$pt1recch = "CS6";#221ch：東映チャンネル
+-			}elsif($recch == 222){
+-				$pt1recch = "CS6";#222ch：衛星劇場
+-			}elsif($recch == 223){
+-				$pt1recch = "CS6";#223ch：チャンネルNECO
+-			}elsif($recch == 224){
+-				$pt1recch = "CS6";#224ch：洋画★シネフィル・イマジカ /2012年3月 ネットワーク変更、移動、あきチャンネル
+-			}elsif($recch == 292){
+-				$pt1recch = "CS6";#292ch：時代劇専門チャンネル
+-			}elsif($recch == 238){
+-				$pt1recch = "CS6";#238ch：スター・チャンネル クラシック /2011年9月30日ネットワーク変更、名称変更、あきチャンネル
+-			}elsif($recch == 310){
+-				$pt1recch = "CS16";#310ch：スーパー！ドラマTV #2012/5/30 CS6→CS16変更
+-			}elsif($recch == 311){
+-				$pt1recch = "CS16";#311ch：AXN #2012/5/30 CS6→CS16変更
+-			}elsif($recch == 343){
+-				$pt1recch = "CS22";#343ch：ナショナルジオグラフィックチャンネル(#2012/6/15 CS6→CS22変更
+-			}elsif($recch == 055){
+-				$pt1recch = "CS8";#055ch：ショップ チャンネル
+-			}elsif($recch == 55){
+-				$pt1recch = "CS8";#55ch：ショップ チャンネル
+-			}elsif($recch == 227){
+-				$pt1recch = "CS4";#227ch：ザ・シネマ #2012/6/17 ch間違い、CS10からCS4へ変更
+-			}elsif($recch == 800){
+-				$pt1recch = "CS10";#800ch：スカチャンHD800
+-			}elsif($recch == 801){
+-				$pt1recch = "CS10";#801ch：スカチャン801
+-			}elsif($recch == 802){
+-				$pt1recch = "CS10";#802ch：スカチャン802
+-			}elsif($recch == 260){
+-				$pt1recch = "CS12";#260ch：ザ・ゴルフ・チャンネル 2012年3月31日廃止
+-			}elsif($recch == 303){
+-				$pt1recch = "CS12";#303ch：テレ朝チャンネル
+-			}elsif($recch == 323){
+-				$pt1recch = "CS12";#323ch：MTV
+-			}elsif($recch == 324){
+-				$pt1recch = "CS12";#324ch：ミュージック・エア
+-			}elsif($recch == 352){
+-				$pt1recch = "CS12";#352ch：朝日ニュースター
+-			}elsif($recch == 353){
+-				$pt1recch = "CS12";#353ch：BBCワールドニュース
+-			}elsif($recch == 354){
+-				$pt1recch = "CS12";#354ch：CNNj
+-			}elsif($recch == 361){
+-				$pt1recch = "CS12";#361ch：ジャスト・アイ インフォメーション 2011年8月31日廃止
+-			}elsif($recch == 251){
+-				$pt1recch = "CS14";#251ch：J sports 1 2011年10月ネットワーク変更、移動、あきチャンネル
+-			}elsif($recch == 252){
+-				$pt1recch = "CS14";#252ch：J sports 2 2011年10月ネットワーク変更、移動、あきチャンネル
+-			}elsif($recch == 253){
+-				$pt1recch = "CS14";#253ch：J sports Plus 2012年4月ネットワーク変更、名称変更、移動、あきチャンネル
+-			}elsif($recch == 254){
+-				$pt1recch = "CS6";#254ch：GAORA #2012/5/30 CS14→CS6変更
+-			}elsif($recch == 250){
+-				$pt1recch = "CS6";#255ch：スカイ・A sports＋ 2012年1月24日 Ch.255からCh.250に変更CS14からCS6に変更。
+-			}elsif($recch == 305){
+-				$pt1recch = "CS16";#305ch：チャンネル銀河
+-			}elsif($recch == 333){
+-				$pt1recch = "CS16";#333ch：アニメシアターX(AT-X)
+-			}elsif($recch == 342){
+-				$pt1recch = "CS16";#342ch：ヒストリーチャンネル
+-			}elsif($recch == 290){
+-				$pt1recch = "CS16";#290ch：TAKARAZUKA SKY STAGE
+-
+-				#	}elsif($recch == 803){
+-				#		$pt1recch = "CS16";#803ch：スカチャン803 2012年05月08日 スカチャン3にch,TP,NW変更
+-			}elsif($recch == 804){
+-				$pt1recch = "CS16";#804ch：スカチャン804 2011/9 廃止　あきチャンネル
+-			}elsif($recch == 805){
+-				$pt1recch = "CS10";#805ch：スカチャン3
+-			}elsif($recch == 240){
+-				$pt1recch = "CS18";#240ch：ムービープラスHD
+-			}elsif($recch == 262){
+-				$pt1recch = "CS18";#262ch：ゴルフネットワーク
+-			}elsif($recch == 314){
+-				$pt1recch = "CS18";#314ch：女性チャンネル♪LaLa TV
+-
+-				#	}elsif($recch == 258){
+-				#		$pt1recch = "CS20";#258ch：フジテレビ739 #2011/5/1 ch変更 307chへ
+-				#	}elsif($recch == 302){
+-				#		$pt1recch = "CS20";#302ch：フジテレビ721 #2011/5/1 ch変更 308chへ
+-			}elsif($recch == 332){
+-				$pt1recch = "CS20";#332ch：アニマックス 2011/10 BSへネットワーク変更　あきチャンネル
+-			}elsif($recch == 340){
+-				$pt1recch = "CS6";#340ch：ディスカバリーチャンネル 2012年05月30日 CS20→CS6
+-			}elsif($recch == 341){
+-				$pt1recch = "CS6";#341ch：アニマルプラネット2012年05月30日 CS20→CS6
+-			}elsif($recch == 160){
+-				$pt1recch = "CS22";#160ch：C-TBSウェルカムチャンネル 2012年3月31日廃止　あきチャンネル
+-			}elsif($recch == 161){
+-				$pt1recch = "CS22";#161ch：QVC
+-			}elsif($recch == 185){
+-				$pt1recch = "CS22";#185ch：プライム365.TV 2012年3月31日 廃止　あきチャンネル
+-			}elsif($recch == 293){
+-				$pt1recch = "CS22";#293ch：ファミリー劇場
+-			}elsif($recch == 301){
+-				$pt1recch = "CS22";#301ch：TBSチャンネル
+-			}elsif($recch == 304){
+-				$pt1recch = "CS22";#304ch：ディズニー・チャンネル 2012年3月1日 BSにネットワーク変更　あきチャンネル
+-			}elsif($recch == 325){
+-				$pt1recch = "CS22";#325ch：MUSIC ON! TV
+-			}elsif($recch == 330){
+-				$pt1recch = "CS12";#330ch：キッズステーション  #HD化により2010/4変更 #2012/7/24からはトラポン不明だけど念のため
+-			}elsif($recch == 351){
+-				$pt1recch = "CS22";#351ch：TBSニュースバード
+-			}elsif($recch == 257){
+-				$pt1recch = "CS24";#ch：日テレG+
+-			}elsif($recch == 291){
+-				$pt1recch = "CS24";#ch：fashiontv 2009年3月31日 廃止　あきチャンネル
+-			}elsif($recch == 300){
+-				$pt1recch = "CS24";#ch：日テレプラス
+-			}elsif($recch == 320){
+-				$pt1recch = "CS24";#ch：安らぎの音楽と風景／エコミュージックTV 2009年3月31日 廃止　あきチャンネル
+-			}elsif($recch == 321){
+-				$pt1recch = "CS24";#ch：MusicJapan TV→100%ヒッツ!スペースシャワーTVプラス 2012/4
+-			}elsif($recch == 350){
+-				$pt1recch = "CS24";#ch：日テレNEWS24
+-			}elsif($recch == 294){
+-				$pt1recch = "CS4";#ch294：ホームドラマチャンネル
+-			}elsif($recch == 315){
+-				$pt1recch = "CS24";#ch315：FOXプラス
+-			}elsif($recch == 362){
+-				$pt1recch = "CS24";#ch362：旅チャンネル
++				$pt1recch = "CS/CS8";#335ch：キッズステーション HD
++                        }elsif($recch == 218){
++                                $pt1recch = "CS/CS8"; # 東映チャンネル
++                        }elsif($recch == 219){
++                                $pt1recch = "CS/CS10"; # 衛星劇場
++                        }elsif($recch == 223){
++                                $pt1recch = "CS/CS24"; # 映画ch・NECO
++                        }elsif($recch == 227){
++                                $pt1recch = "CS/CS14"; # ザ・シネマ
++                        }elsif($recch == 240){
++                                $pt1recch = "CS/CS18"; # ムービープラス
++                        }elsif($recch == 250){
++                                $pt1recch = "CS/CS4"; # スカイA
++                        }elsif($recch == 254){
++                                $pt1recch = "CS/CS12"; # GAORA
++                        }elsif($recch == 257){
++                                $pt1recch = "CS/CS24"; # 日テレG+
++                        }elsif($recch == 262){
++                                $pt1recch = "CS/CS18"; # ゴルフネットワーク
++                        }elsif($recch == 290){
++                                $pt1recch = "CS/CS16"; # SKY STAGE
++                        }elsif($recch == 292){
++                                $pt1recch = "CS/CS4"; # 時代劇専門ch
++                        }elsif($recch == 293){
++                                $pt1recch = "CS/CS14"; # ファミリー劇場
++                        }elsif($recch == 294){
++                                $pt1recch = "CS/CS6"; # ホームドラマch
++                        }elsif($recch == 295){
++                                $pt1recch = "CS/CS24"; # MONDO TV
++                        }elsif($recch == 296){
++                                $pt1recch = "CS/CS2"; # TBSチャンネル1
++                        }elsif($recch == 297){
++                                $pt1recch = "CS/CS22"; # TBSチャンネル2
++                        }elsif($recch == 298){
++                                $pt1recch = "CS/CS2"; # テレ朝チャンネル1
++                        }elsif($recch == 299){
++                                $pt1recch = "CS/CS2"; # テレ朝チャンネル2
++                        }elsif($recch == 300){
++                                $pt1recch = "CS/CS24"; # 日テレプラス
++                        }elsif($recch == 301){
++                                $pt1recch = "CS/CS4"; # エンタメ～テレ
++                        }elsif($recch == 305){
++                                $pt1recch = "CS/CS18"; # チャンネル銀河
++                        }elsif($recch == 307){
++                                $pt1recch = "CS/CS20"; # フジテレビONE
++                        }elsif($recch == 308){
++                                $pt1recch = "CS/CS20"; # フジテレビTWO
++                        }elsif($recch == 309){
++                                $pt1recch = "CS/CS20"; # フジテレビNEXT
++                        }elsif($recch == 310){
++                                $pt1recch = "CS/CS14"; # スーパー！ドラマTV
++                        }elsif($recch == 311){
++                                $pt1recch = "CS/CS16"; # AXN海外ドラマ
++                        }elsif($recch == 312){
++                                $pt1recch = "CS/CS22"; # FOX
++                        }elsif($recch == 314){
++                                $pt1recch = "CS/CS18"; # 女性ch／LaLa
++                        }elsif($recch == 316){
++                                $pt1recch = "CS/CS16"; # AXNミステリー
++                        }elsif($recch == 321){
++                                $pt1recch = "CS/CS16"; # スペシャプラス
++                        }elsif($recch == 322){
++                                $pt1recch = "CS/CS20"; # スペースシャワーTV
++                        }elsif($recch == 323){
++                                $pt1recch = "CS/CS4"; # MTV
++                        }elsif($recch == 324){
++                                $pt1recch = "CS/CS6"; # ミュージック・エア
++                        }elsif($recch == 325){
++                                $pt1recch = "CS/CS12"; # エムオン！
++                        }elsif($recch == 329){
++                                $pt1recch = "CS/CS6"; # 歌謡ポップスch
++                        }elsif($recch == 330){
++                                $pt1recch = "CS/CS12"; # キッズステーション
++                        }elsif($recch == 331){
++                                $pt1recch = "CS/CS6"; # カートゥーン
++                        }elsif($recch == 333){
++                                $pt1recch = "CS/CS16"; # AT-X
++                        }elsif($recch == 339){
++                                $pt1recch = "CS/CS2"; # ディズニージュニア
++                        }elsif($recch == 340){
++                                $pt1recch = "CS/CS6"; # ディスカバリーチャンネル
++                        }elsif($recch == 341){
++                                $pt1recch = "CS/CS6"; # アニマルプラネット
++                        }elsif($recch == 342){
++                                $pt1recch = "CS/CS14"; # ヒストリーチャンネル
++                        }elsif($recch == 343){
++                                $pt1recch = "CS/CS12"; # ナショナルジオグラフィック
++                        }elsif($recch == 349){
++                                $pt1recch = "CS/CS8"; # 日テレNEWS24
++                        }elsif($recch == 351){
++                                $pt1recch = "CS/CS22"; # TBS NEWS
++                        }elsif($recch == 353){
++                                $pt1recch = "CS/CS16"; # BBCワールドニュース
++                        }elsif($recch == 354){
++                                $pt1recch = "CS/CS6"; # CNNj
++                        }elsif($recch == 363){
++                                $pt1recch = "CS/CS6"; # 囲碁・将棋チャンネル
++                        }elsif($recch == 800){
++                                $pt1recch = "CS/CS10"; # スポーツライブ+
++                        }elsif($recch == 801){
++                                $pt1recch = "CS/CS10"; # スカチャン1
+ 			}# end if CSリマップ
+ 		}#end if テーブルになかったら
+ 
+@@ -1194,9 +1173,9 @@
+ 			system("rm -rf $livefolderpath/${m3u8name}.m3u8");
+ 
+ 			#まだプロセスが残っているか確認
+-			$processes = `pgrep recpt1 | grep $row[0] | wc -l`;
++			$processes = `pgrep rivarun | grep $row[0] | wc -l`;
+ 			if ($processes == 1){
+-				&writelog("foltialib.pl DEBUG stoplivestreaming() This recpt1 process still remains,kill -KILL $row[0]");
++				&writelog("foltialib.pl DEBUG stoplivestreaming() This rivarun process still remains,kill -KILL $row[0]");
+ 
+ 				#system("kill -KILL $row[0]");
+ 				kill(9,$row[0]);
+@@ -1438,10 +1417,10 @@
+ 	my $catvch = "";
+ 	if ($ch >= 1000){
+ 		$catvch = $ch - 1000;
+-		$catvch = "C".$catvch;
++		$catvch = "GR/C".$catvch;
+ 		&writelog("foltialib catvchcheck() DEBUG CATV ch $ch to $catvch ");
+ 	}else{
+-		$catvch = $ch;
++		$catvch = "GR/".$ch;
+ 	}
+ 	return $catvch;
+ }# end sub catvchcheck
+diff -ur foltia.orig/perl/live_process_starter.pl foltia/perl/live_process_starter.pl
+--- foltia.orig/perl/live_process_starter.pl	2022-04-07 22:23:33.000000000 +0900
++++ foltia/perl/live_process_starter.pl	2022-08-22 09:07:55.892528836 +0900
+@@ -185,7 +185,7 @@
+ 	$srcflag = "file";
+ }else{#放送局IDなら
+ 	#StationIDからバンドとデジタルチャンネル取得
+-	my ($bandtype,$digitalrecch,$pt1recch);
++	my ($bandtype,$digitalrecch,$rivarecch);
+ 	($bandtype,$digitalrecch) = &stationid2physicalch($inputsrc);
+ 	if ($bandtype >= 3){
+ 		&writelog("live_process_starter ERROR cannot use radio station.$bandtype,$digitalrecch,$inputsrc");
+@@ -193,17 +193,19 @@
+ 	}
+ 	#デジタルチャンネルからCSで使われてるトラポン番号取得
+ 	my $originalrecch = $digitalrecch; 
+-	($pt1recch,$digitalrecch) = &digitalch2csband($bandtype,$digitalrecch);
++	($rivarecch,$digitalrecch) = &digitalch2csband($bandtype,$digitalrecch);
+ 	
+-	if(-e "$toolpath/perl/tool/recpt1"){
++	if(-e "$toolpath/perl/tool/rivarun"){
+ 		if ($bandtype >= 1){ #BS/CSなら
+-		$recpt1cmd = "$toolpath/perl/tool/recpt1 --b25 --sid $originalrecch $pt1recch - RECPT1FIFO ";
++                &writelog("live_process_starter $toolpath/perl/tool/rivarun --b25 --mirakurun $mirakurun --ch $rivarecch - RECPT1FIFO");
++		$recpt1cmd = "$toolpath/perl/tool/rivarun --b25 --mirakurun $mirakurun --ch $rivarecch - RECPT1FIFO ";
+ 		}else{ #地デジ
+ 		$catvch = &catvchcheck($originalrecch);
+-		$recpt1cmd = "$toolpath/perl/tool/recpt1 --b25 --sid hd $catvch - RECPT1FIFO  ";
++                &writelog("live_process_starter $toolpath/perl/tool/rivarun --b25 --mirakurun $mirakurun --ch $catvch - RECPT1FIFO");
++		$recpt1cmd = "$toolpath/perl/tool/rivarun --b25 --mirakurun $mirakurun --ch $catvch - RECPT1FIFO  ";
+ 		}
+ 	}else{ # エラー recpt1がありません
+-		&writelog("live_process_starter :ERROR :recpt1  not found. You must install $toolpath/tool/b25 and $toolpath/tool/recpt1.");
++		&writelog("live_process_starter :ERROR :rivarun  not found. You must install $toolpath/tool/b25 and $toolpath/tool/rivarun.");
+ 		exit(3);
+ 	}
+ 	$srcflag = "recpt1";
+diff -ur foltia.orig/perl/recwrap.pl foltia/perl/recwrap.pl
+--- foltia.orig/perl/recwrap.pl	2022-04-07 22:23:33.000000000 +0900
++++ foltia/perl/recwrap.pl	2022-08-22 09:07:55.896528760 +0900
+@@ -550,7 +550,7 @@
+ 	my @pid;
+ 	my $sth;
+ 
+-	@pid=(`pgrep recpt1`, ` pgrep recfriio`);
++	@pid=(`pgrep rivarun`, ` pgrep recfriio`);
+ 	chomp(@pid);
+ 	if (@pid > 0){
+ 		my @filenameparts;
+@@ -598,7 +598,7 @@
+ 						&writelog("recwrap DEBUG continuousrecordingcheck() $recfileutf8 endtimeepoch $endtimeepoch");
+ 
+ 						if ($endtimeepoch < $now){#まもなく(2分以内に)終わる番組なら
+-							system("kill $pid");#recpt1プロセス停止
++							system("kill $pid");#rivarunプロセス停止
+ 							&writelog("recwrap The process to be finished soon was killed. FILE $filename/END $endtimeepoch/ProcessID $pid");
+ 						}else{
+ 							&writelog("recwrap DEBUG continuousrecordingcheck() No processes killed: END $endtimeepoch/2MIN AFTER $now");
+@@ -652,7 +652,7 @@
+ 		@recfile = $sth->fetchrow_array;
+ 		$recfile[2] = Encode::decode("utf8",$recfile[2]);
+ 		if ($recfile[0] == 1){
+-			system("kill $processid");#recpt1プロセス停止
++			system("kill $processid");#rivarunプロセス停止
+ 			&writelog("recwrap keyword recording process killed $processid/$filename/$recfile[1],$recfile[2],$recfile[3],$recfile[4]");
+ 		}else{
+ 			&writelog("recwrap DEBUG findkeywordrecordingandkillprocess() No process keyword recording.$filename/$recfile[0],$recfile[1],$recfile[2],$recfile[3],$recfile[4]");
+diff -ur foltia.orig/php/phpcommon/foltialib.php foltia/php/phpcommon/foltialib.php
+--- foltia.orig/php/phpcommon/foltialib.php	2022-04-07 22:22:27.000000000 +0900
++++ foltia/php/phpcommon/foltialib.php	2022-08-22 09:08:35.003793888 +0900
+@@ -853,6 +853,7 @@
+     global $uhfbandtype; //
+     global $usedigital; //
+     global $useenvironmentpolicy; //
++    global $mirakurun; //
+ 
+     global $conf;
+     global $const;
+@@ -896,6 +897,7 @@
+     $uhfbandtype = $conf['uhfbandtype'];
+     $usedigital = $conf['usedigital'];
+     $useenvironmentpolicy = $conf['useenvironmentpolicy'];
++    $mirakurun = $conf['mirakurun'];
+ 
+     //データ取得
+     $query = "
+diff -ur foltia.orig/php/setup/conf_setting.php foltia/php/setup/conf_setting.php
+--- foltia.orig/php/setup/conf_setting.php	2022-04-07 22:22:47.000000000 +0900
++++ foltia/php/setup/conf_setting.php	2022-08-22 09:08:50.691499105 +0900
+@@ -180,6 +180,7 @@
+     $items['radikopremiumid'] = "ラジコプレミアム 登録メールアドレス";
+     $items['radikopremiumpasswd'] = "ラジコプレミアム パスワード";
+     $items['keepdbdump'] = "DBダンプ設定";
++    $items['mirakurun'] = "Mirakurunの接続先";
+ 
+ //tooltips(並び順配列)
+     $sortorder = array(
+@@ -211,6 +212,7 @@
+         "m2plistitemmax",
+         "mp4contentsitemmax",
+         "defaultstreamingbitrate",
++        "mirakurun",
+     );
+ /*
+ "digitalterrestrialtuners",
+@@ -277,6 +279,7 @@
+     $description['radikopremiumid'] = "ラジコプレミアムに契約している場合には契約メールアドレスを入力します。";
+     $description['radikopremiumpasswd'] = "ラジコプレミアムに契約している場合にはログインパスワードを入力します。この項目はデータベース上で平文で記入されます。使い回しでないパスワードでコンフィグへのアクセス、データベースアクセスやダンプファイルが流出しない限定された環境でのみ設定してください。スペースや記号が含まれている場合は正常に動作しない可能性があります。";
+     $description['keepdbdump'] = "毎日出力されるデータベースのバックアップダンプファイルを日付入りファイル名として毎日増加させる設定です。デフォルトはNoです。";
++    $description['mirakurun'] = "Mirakurunの接続先を指定します。";
+ 
+ //フォームのタイプ用変数(0はtext,1はYES/NO,2以降は専用メニュー,4はpassword)
+     $formtype['trconqty'] = "0";
+@@ -334,6 +337,7 @@
+     $formtype['radikopremiumid'] = 0;
+     $formtype['radikopremiumpasswd'] = 4;
+     $formtype['keepdbdump'] = 1;
++    $formtype['mirakurun'] = 0;
+ 
+     $flag = $_POST['mode']; //変更ボタンが押されたら$flagにnewが入る。
+     $initialization = $_POST['default']; //工場出荷時設定内容に初期化ボタンが押されたら値が入る
+diff -ur foltia.orig/php/setup/insert_into_foltia_config.sql foltia/php/setup/insert_into_foltia_config.sql
+--- foltia.orig/php/setup/insert_into_foltia_config.sql	2022-04-07 22:22:48.000000000 +0900
++++ foltia/php/setup/insert_into_foltia_config.sql	2022-08-22 09:08:50.695499031 +0900
+@@ -59,4 +59,5 @@
+ INSERT INTO foltia_config VALUES ('showreserve', '1');
+ INSERT INTO foltia_config VALUES ('radikopremiumid','');
+ INSERT INTO foltia_config VALUES ('radikopremiumpasswd','');
+-INSERT INTO foltia_config VALUES ('keepdbdump', '0');
+\ No newline at end of file
++INSERT INTO foltia_config VALUES ('keepdbdump', '0');
++INSERT INTO foltia_config VALUES ('mirakurun', '');
+diff -ur foltia.orig/php/setup/tuner_status.php foltia/php/setup/tuner_status.php
+--- foltia.orig/php/setup/tuner_status.php	2022-04-07 22:22:48.000000000 +0900
++++ foltia/php/setup/tuner_status.php	2022-08-22 09:08:50.699498955 +0900
+@@ -69,6 +69,11 @@
+ 
+ function start_task(oj)
+ {
++        window.alert("Mirakurun のチューナーではチャンネルテストはサポートされていません。");
++}
++
++function start_task_p(oj)
++{
+ 	//document.getElementById("update").style.visibility = "hidden";
+ 	var device=oj.name;
+ 	var channel=oj.channel.value;
+@@ -154,69 +159,73 @@
+ print "<p><div id=\"ieerr\"></div><p><br>\n";
+ 
+ //チューナー数判定
+-$alltunerdevices = shell_exec("$toolpath/perl/count_tuners.pl");
+-$alltunerdevicesarray = preg_split("/,/", $alltunerdevices);
+-if (($alltunerdevicesarray[0] == 0)&&($alltunerdevicesarray[1] == 0)){
+-	print "<p>チューナーデバイスが認識されていません。<br>
+-	接続等を再度ご確認ください。<br>
+-	カーネルをアップデートした場合はチューナードライバを再インストールする必要があります。<br>
+-	コマンドラインからrootユーザーで次のコマンドを実行し再起動してください。<br>
+-	/home/foltia/perl/reinstall-Tuner-Drivers.sh<br>
+-	</p>\n";
+-	
+-	$pt3fpga = shell_exec ( 'dmesg | grep PT | grep FPGA' );
+-	print "<p>$pt3fpga</p>\n";
+-	print "<p><br>PT3を装着しているのに認識されない場合には、上に<br>
+-PT3: this FPGA version is not supported. version=0x2<br>
+-といったサポート外のPT3ファームウェアバージョンを示す表示がないかご確認ください。<br>
+-<br>
+-この表示が出ますと、PT3のファームウェアがドライバが対応していない旧バージョンであることを示しています。<br>
+-foltia ANIME LOCKERが採用しているPT3ドライバではPT3ファームウェア(FPGA回路)が0x04以降を対象としております。<br>
+-<br>
+-PT3開発メーカーのアースソフトよりFPGA 回路更新ツールをダウンロードしてファームウェアをアップデートされますようお願いいたします。<br>
+-<a href = 'http://earthsoft.jp/PT3/download.html' target='_blank'>http://earthsoft.jp/PT3/download.html</a><br>
+-<br>
+-またアップデートにはWindows環境が必要となります。<br>
+-お持ちでない場合には評価版などをインストールしてPT3のアップデートをされることをご検討下さい。<br>
+-<br>
+-評価版のダウンロード:Windows 10 Enterprise<br>
+-<a href = 'https://www.microsoft.com/ja-jp/evalcenter/evaluate-windows-10-enterprise' target='_blank'>https://www.microsoft.com/ja-jp/evalcenter/evaluate-windows-10-enterprise</a>
+-	</p>\n";
+-	
++//$alltunerdevices = shell_exec("$toolpath/perl/count_tuners.pl");
++//$alltunerdevicesarray = preg_split("/,/", $alltunerdevices);
++//if (($alltunerdevicesarray[0] == 0)&&($alltunerdevicesarray[1] == 0)){
++//	print "<p>チューナーデバイスが認識されていません。<br>
++//	接続等を再度ご確認ください。<br>
++//	カーネルをアップデートした場合はチューナードライバを再インストールする必要があります。<br>
++//	コマンドラインからrootユーザーで次のコマンドを実行し再起動してください。<br>
++//	/home/foltia/perl/reinstall-Tuner-Drivers.sh<br>
++//	</p>\n";
++//	
++//	$pt3fpga = shell_exec ( 'dmesg | grep PT | grep FPGA' );
++//	print "<p>$pt3fpga</p>\n";
++//	print "<p><br>PT3を装着しているのに認識されない場合には、上に<br>
++//PT3: this FPGA version is not supported. version=0x2<br>
++//といったサポート外のPT3ファームウェアバージョンを示す表示がないかご確認ください。<br>
++//<br>
++//この表示が出ますと、PT3のファームウェアがドライバが対応していない旧バージョンであることを示しています。<br>
++//foltia ANIME LOCKERが採用しているPT3ドライバではPT3ファームウェア(FPGA回路)が0x04以降を対象としております。<br>
++//<br>
++//PT3開発メーカーのアースソフトよりFPGA 回路更新ツールをダウンロードしてファームウェアをアップデートされますようお願いいたします。<br>
++//<a href = 'http://earthsoft.jp/PT3/download.html' target='_blank'>http://earthsoft.jp/PT3/download.html</a><br>
++//<br>
++//またアップデートにはWindows環境が必要となります。<br>
++//お持ちでない場合には評価版などをインストールしてPT3のアップデートをされることをご検討下さい。<br>
++//<br>
++//評価版のダウンロード:Windows 10 Enterprise<br>
++//<a href = 'https://www.microsoft.com/ja-jp/evalcenter/evaluate-windows-10-enterprise' target='_blank'>https://www.microsoft.com/ja-jp/evalcenter/evaluate-windows-10-enterprise</a>
++//	</p>\n";
+ /*
+-dmesg | grep PT | grep FPGA
+-
+-出力例
+-pt1-pci.c: 1.1.0 2010-01-27
+-PT3: PT3-pci.c: rev.0
+-PT3-pci 0000:01:00.0: PCI INT A -> GSI 16 (level, low) -> IRQ 16
+-PT3-pci 0000:01:00.0: setting latency timer to 64
+-PT3: Bus Mastering Enabled.
+-PT3: this FPGA version is not supported. version=0x2
+-PT3-pci 0000:01:00.0: PCI INT A disabled
+-PT3-pci: probe of 0000:01:00.0 failed with error -5
+-
+-
+-こちらで、一番大事なのは
+->PT3: this FPGA version is not supported. version=0x2
+-という行になります。
+-
+-この表示が出ますと、PT3のファームウェアがドライバが対応していない旧バージョンであることを示しています。
+-foltia ANIME LOCKERが採用しておりますのPT3ドライバではPT3ファームウェア(FPGA回路)が0x04以降を対象としております。
+-
+-PT3開発メーカーのアースソフトよりFPGA 回路更新ツールをダウンロードしてファームウェアをアップデートされますようお願いいたします。
+-http://earthsoft.jp/PT3/download.html
+-
+-またアップデートにはWindows環境が必要となります。
+-お持ちでない場合には評価版などをインストールしてPT3のアップデートをされることをご検討下さい。
+-
+-評価版のダウンロード:Windows 8.1 Enterprise
+-http://technet.microsoft.com/ja-jp/evalcenter/hh699156.aspx
+-
++//dmesg | grep PT | grep FPGA
++//
++//出力例
++//pt1-pci.c: 1.1.0 2010-01-27
++//PT3: PT3-pci.c: rev.0
++//PT3-pci 0000:01:00.0: PCI INT A -> GSI 16 (level, low) -> IRQ 16
++//PT3-pci 0000:01:00.0: setting latency timer to 64
++//PT3: Bus Mastering Enabled.
++//PT3: this FPGA version is not supported. version=0x2
++//PT3-pci 0000:01:00.0: PCI INT A disabled
++//PT3-pci: probe of 0000:01:00.0 failed with error -5
++//
++//
++//こちらで、一番大事なのは
++//>PT3: this FPGA version is not supported. version=0x2
++//という行になります。
++//
++//この表示が出ますと、PT3のファームウェアがドライバが対応していない旧バージョンであることを示しています。
++//foltia ANIME LOCKERが採用しておりますのPT3ドライバではPT3ファームウェア(FPGA回路)が0x04以降を対象としております。
++//
++//PT3開発メーカーのアースソフトよりFPGA 回路更新ツールをダウンロードしてファームウェアをアップデートされますようお願いいたします。
++//http://earthsoft.jp/PT3/download.html
++//
++//またアップデートにはWindows環境が必要となります。
++//お持ちでない場合には評価版などをインストールしてPT3のアップデートをされることをご検討下さい。
++//
++//評価版のダウンロード:Windows 8.1 Enterprise
++//http://technet.microsoft.com/ja-jp/evalcenter/hh699156.aspx
++//
+ */
+-}else{
+-print "<p>地デジチューナー数:$alltunerdevicesarray[0] 衛星チューナー数:$alltunerdevicesarray[1] </p>\n";
++//}else{
++//print "<p>地デジチューナー数:$alltunerdevicesarray[0] 衛星チューナー数:$alltunerdevicesarray[1] </p>\n";
+ //テーブル開始
++
++$mirakurunstatus = shell_exec("curl -s -X GET http://$mirakurun/api/status | jq -r '\"Platform:\"+.process.platform+\"(\"+.process.arch+\"), \"+\"Version:\"+.version+\", TunerDevice Streams:\"+(.streamCount.tunerDevice|tostring)+\", TSFilter Streams:\"+(.streamCount.tsFilter|tostring)+\", Decoder Streams:\"+(.streamCount.decoder|tostring)+\", Gathering Network IDs:\"+(.epg.gatheringNetworks|tostring)'");
++print "<h2>Mirakurun ($mirakurun)</h2>
++<p>$mirakurunstatus</p>";
++
+ print "
+ <!-- id=setUpTable/start -->
+ <div id=\"setUpTable\">
+@@ -237,7 +246,8 @@
+ 
+ //チューナーデバイス取得
+ //地デジ
+-$terrestrialtunerdevices = shell_exec("$toolpath/perl/count_tuners.pl -t");
++//$terrestrialtunerdevices = shell_exec("$toolpath/perl/count_tuners.pl -t");
++$terrestrialtunerdevices = shell_exec("curl -s -X GET http://$mirakurun/api/config/tuners | jq  -r '.[] | select(.types[0]==\"GR\") | .command' |awk '{print \"($mirakurun):\" $4}'");
+ $terrestrialtunerdevicesarray = preg_split("/\R/", $terrestrialtunerdevices);
+ $terrestrialtunerdevicesarray = array_filter($terrestrialtunerdevicesarray, 'strlen'); 
+ //var_dump($terrestrialtunerdevicesarray);
+@@ -246,10 +256,10 @@
+ foreach($terrestrialtunerdevicesarray as $tunerdevice){
+ //	print "<tr>\n<td><form action=\"tuner_check.php\" method=\"post\">$tunerdevice<input type=\"hidden\" name=\"device\" value=\"$tunerdevice\"></td>\n<td>地上デジタル</td>\n<td>$selectform</td>\n<td><input type=\"submit\" value=\"シングルチャンネルテスト\"></td>\n<td><form action=\"tuner_check.php\" method=\"post\"><input type=\"hidden\" name=\"device\" value=\"$tunerdevice\"><input type=\"hidden\" name=\"channel\" value=\"all\"><input type=\"submit\" value=\"全チャンネルテスト\"></td>\n";
+ 	print "<tr>
+-	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\">$tunerdevice</td>
++	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\" >$tunerdevice</td>
+ 	<td>地上デジタル</td>\n<td>$selectform</td>
+ 	<td><input type=\"submit\" value=\"シングルチャンネルテスト\" ></form></td>
+-	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\">
++	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\" >
+ 		<input type=\"hidden\" name=\"channel\" value=\"all-t\">
+ 		<input type=\"submit\" value=\"全チャンネルテスト\">
+ 		</form>
+@@ -285,17 +295,18 @@
+ <option value=\"CS24\">ND-24</option>
+ </select>";
+ 
+-$bstunerdevices = shell_exec("$toolpath/perl/count_tuners.pl -s");
++//$bstunerdevices = shell_exec("$toolpath/perl/count_tuners.pl -s");
++$bstunerdevices = shell_exec("curl -s -X GET http://$mirakurun/api/config/tuners | jq  -r '.[] | select(.types[0]==\"BS\") | .command' |awk '{print \"($mirakurun):\" $4}'");
+ $bstunerdevicesarray = preg_split("/\R/", $bstunerdevices);
+ $bstunerdevicesarray = array_filter($bstunerdevicesarray, 'strlen'); 
+ //var_dump($bstunerdevicesarray);
+ foreach($bstunerdevicesarray as $tunerdevice){
+ //	print "<tr>\n<td><form action=\"tuner_check.php\" method=\"post\">$tunerdevice<input type=\"hidden\" name=\"device\" value=\"$tunerdevice\"></td>\n<td>衛星</td>\n<td>$selectform</td>\n<td><input type=\"submit\" value=\"シングルチャンネルテスト\"></td>\n<td><form action=\"tuner_check.php\" method=\"post\"><input type=\"hidden\" name=\"device\" value=\"$tunerdevice\"><input type=\"hidden\" name=\"channel\" value=\"all\"><input type=\"submit\" value=\"全チャンネルテスト\"></td>\n";
+ 	print "<tr>
+-	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\">$tunerdevice</td>
++	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\" >$tunerdevice</td>
+ 	<td>衛星</td>\n<td>$selectform</td>
+ 	<td><input type=\"submit\" value=\"シングルチャンネルテスト\" ></form></td>
+-	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\">
++	<td><form name=\"$tunerdevice\" onsubmit=\"return start_task(this)\" >
+ 		<input type=\"hidden\" name=\"channel\" value=\"all-s\">
+ 		<input type=\"submit\" value=\"全チャンネルテスト\">
+ 		</form>
+@@ -315,11 +326,10 @@
+ 
+ 
+ //print "<input type=\"button\" onclick=\"start_task();\"   value=\"実行\" name=\"update\" id=\"update\">\n";
+-print "<div id=\"result\" style=\"font-size: 100%;line-height: 1.5em; overflow:auto;\">・全チャンネルテストは10分程度を要します。<br>\n</div>";
++print "<p>地デジチューナー数:".count($terrestrialtunerdevicesarray)." 衛星チューナー数:".count($bstunerdevicesarray)." </p>\n";
++//print "<div id=\"result\" style=\"font-size: 100%;line-height: 1.5em; overflow:auto;\">・全チャンネルテストは10分程度を要します。<br>\n</div>";
+ 
+-
+-
+-}//チューナー数
++//}//チューナー数
+ 
+ //権限
+ }else{//権限なし
+@@ -369,4 +379,4 @@
+ return($forms);
+ }//end writeTerrestrialTunerDeviceSelectForm()
+ 
+-?>
+\ No newline at end of file
++?>
