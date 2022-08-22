@@ -37,8 +37,10 @@ RUN rm -rf /home/foltia/firmware/update
 RUN sed -i '/shutdown/s/^/#/g' /etc/rc.local
 RUN /etc/init.d/rh-postgresql95-postgresql start; /etc/rc.local; /etc/init.d/rh-postgresql95-postgresql stop
 
-# copy PostgreSQL DB(for persistent volume copy)
+# copy PostgreSQL DB, crontab, atq (for persistent volume copy)
 RUN cp -a /var/opt/rh/rh-postgresql95/lib/pgsql/data /var/opt/rh/rh-postgresql95/lib/pgsql/data.orig
+RUN cp -a /var/spool/at /var/spool/at.orig
+RUN cp -a /var/spool/cron /var/spool/cron.orig
 
 # disable local console setting.
 RUN sed -i '/setterm/s/^/#/g' /etc/rc.local
