@@ -59,7 +59,12 @@ sleep 10
 if [ -n "${MIRAKURUN}" ]; then
   echo "Set Mirakurun host: ${MIRAKURUN}"
   source scl_source enable rh-postgresql95
-  psql -U foltia foltia -c "INSERT INTO foltia_config VALUES ('mirakurun', '${MIRAKURUN}');"
+  MIRAKURUN_CURRENT=`psql -U foltia foltia -c "SELECT value FROM foltia_config  WHERE key='mirakurun'" -q -t | head -n 1`
+  if [ "${MIRAKURUN_CURRENT}" = "" ]; then
+    psql -U foltia foltia -c "INSERT INTO foltia_config VALUES ('mirakurun', '${MIRAKURUN}');"
+  else
+    psql -U foltia foltia -c "UPDATE foltia_config set value = '${MIRAKURUN}' WHERE key = 'mirakurun';"
+  fi
 fi
 
 # option services
