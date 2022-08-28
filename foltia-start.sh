@@ -30,6 +30,16 @@ if [ ! -d /home/foltia/php/tv/live ]; then
   chmod -R 755 /home/foltia/php/tv
 fi
 
+if [ ! -d /home/foltia/php/tv/DLNARoot ]; then
+  echo "Create /home/foltia/php/tv/DLNARoot persistent volume."
+  echo "If you migrated from a physical appliance, rebuild the DLNA structure."
+  echo "docker-compose exec foltia sudo -u foltia /home/foltia/perl/makedlnastructure.pl REBUILD"
+  mkdir /home/foltia/php/tv/DLNARoot
+  chown -R foltia:foltia  /home/foltia/php/tv/DLNARoot
+  chmod -R 755 /home/foltia/php/tv/DLNARoot
+fi
+
+
 if [ ! -e /var/spool/cron/foltia ]; then
   echo "Create  /var/spool/cron/ persistent volume."
   cp -a /var/spool/cron.orig/* /var/spool/cron/
@@ -79,6 +89,7 @@ if [ ${ENABLE_SHELLINABOX} -eq 1 ]; then
 fi
 
 if [ "${ENABLE_MINIDLNA}" -eq 1 ]; then
+  sed -i -e '/^root_container=B/s/^/#/g' -e "/^#root_container=B/iroot_container=B,${DLNARoot}" /etc/minidlna.conf
   /etc/init.d/minidlna start
 fi
 

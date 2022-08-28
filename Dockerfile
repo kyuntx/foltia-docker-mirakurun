@@ -49,6 +49,9 @@ RUN sed -i '/setterm/s/^/#/g' /etc/rc.local
 COPY patch/foltia-mirakurun-6.1.16.patch /home/foltia/
 RUN cd /home/foltia/; patch -p1 < foltia-mirakurun-6.1.16.patch
 
+# fix DLNARoot
+RUN sed -i -e '/^our\ \$dlnarootdir/s/^/#/g' -e "/^#our\ \$dlnarootdir/iour\ \$dlnarootdir\ \=\ \$ENV\{\"DLNARoot\"\}\;" /home/foltia/perl/makedlnastructure.pl
+
 # setup entrypoint
 COPY foltia-start.sh /
 ENTRYPOINT ["/foltia-start.sh"]
