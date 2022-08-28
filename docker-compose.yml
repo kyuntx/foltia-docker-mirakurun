@@ -6,7 +6,7 @@ services:
     environment:
       TZ: Asia/Tokyo
       MIRAKURUN: mirakurun:40772
-      DLNARoot: /data/foltia/tv/DLNARoot # ./tv/DNLARoot
+      DLNAROOT: /home/foltia/php/tv/DNLAroot # ./tv/DNLAroot
       ENABLE_PHPPGADMIN: 0
       ENABLE_SHELLINABOX: 0
       ENABLE_MINIDLNA: 0

@@ -30,13 +30,13 @@ if [ ! -d /home/foltia/php/tv/live ]; then
   chmod -R 755 /home/foltia/php/tv
 fi
 
-if [ ! -d /home/foltia/php/tv/DLNARoot ]; then
-  echo "Create /home/foltia/php/tv/DLNARoot persistent volume."
+if [ ! -d /home/foltia/php/tv/DLNAroot ]; then
+  echo "Create /home/foltia/php/tv/DLNAroot persistent volume."
   echo "If you migrated from a physical appliance, rebuild the DLNA structure."
   echo "docker-compose exec foltia sudo -u foltia /home/foltia/perl/makedlnastructure.pl REBUILD"
-  mkdir /home/foltia/php/tv/DLNARoot
-  chown -R foltia:foltia  /home/foltia/php/tv/DLNARoot
-  chmod -R 755 /home/foltia/php/tv/DLNARoot
+  mkdir /home/foltia/php/tv/DLNAroot
+  chown -R foltia:foltia  /home/foltia/php/tv/DLNAroot
+  chmod -R 755 /home/foltia/php/tv/DLNAroot
 fi
 
 
@@ -77,6 +77,11 @@ if [ -n "${MIRAKURUN}" ]; then
   fi
 fi
 
+if [ -n "${DLNAROOT}" ]; then
+  echo "DLNA root path: ${DLNAROOT}"
+  echo ${DLNAROOT} > /home/foltia/php/tv/.DLNAroot
+fi
+
 # option services
 if [ "${ENABLE_PHPPGADMIN}" -eq 1 ]; then
   echo "phpPgAdmin enabled."
@@ -89,7 +94,7 @@ if [ ${ENABLE_SHELLINABOX} -eq 1 ]; then
 fi
 
 if [ "${ENABLE_MINIDLNA}" -eq 1 ]; then
-  sed -i -e '/^root_container=B/s/^/#/g' -e "/^#root_container=B/iroot_container=B,${DLNARoot}" /etc/minidlna.conf
+  sed -i -e '/^root_container=B/s/^/#/g' -e "/^#root_container=B/iroot_container=B,${DLNAROOT}" /etc/minidlna.conf
   /etc/init.d/minidlna start
 fi
 
